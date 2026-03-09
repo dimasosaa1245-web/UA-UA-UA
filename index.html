@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Оперативно Єціль LIVE</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        body, html {
+            margin: 0; padding: 0;
+            width: 100%; height: 100%;
+            background-color: #000;
+            font-family: 'Arial Black', Gadget, sans-serif;
+            color: white; overflow: hidden;
+        }
+
+        /* --- ЛОГОТИП ТА ЕКРАН ЗАВАНТАЖЕННЯ --- */
+        #loader-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; justify-content: center; align-items: center;
+            flex-direction: column; z-index: 9999; background-color: #000;
+            transition: opacity 1s ease-in-out, visibility 1s;
+        }
+
+        .logo-box {
+            display: flex; align-items: center; background: rgba(255, 255, 255, 0.03); 
+            padding: 10px 20px; border-radius: 4px; border: 1px solid rgba(255, 255, 255, 0.08);
+            margin-bottom: 30px;
+        }
+
+        .radar-container { position: relative; width: 40px; height: 40px; margin-right: 15px; }
+        .radar-svg { width: 100%; height: 100%; animation: rotateRadar 5s linear infinite; }
+        @keyframes rotateRadar { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+        .target {
+            position: absolute; width: 4px; height: 4px; background-color: #ff0000; 
+            border-radius: 50%; box-shadow: 0 0 6px #ff0000; opacity: 0;
+            animation: blinkTarget 3s infinite;
+        }
+        .t1 { top: 10px; left: 28px; animation-delay: 0.5s; }
+        .t2 { top: 25px; left: 8px; animation-delay: 1.8s; }
+
+        @keyframes blinkTarget {
+            0%, 100% { opacity: 0; transform: scale(0.5); }
+            50% { opacity: 1; transform: scale(1.1); }
+        }
+
+        .text-ua {
+            font-size: 28px; text-transform: uppercase; letter-spacing: -0.5px;
+            background: linear-gradient(to bottom, #0057B7 50%, #FFD700 50%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        .text-live { font-size: 18px; color: #555; margin-left: 8px; font-weight: 900; }
+
+        .loader-wrapper { width: 240px; }
+        .loader-bar { width: 100%; height: 2px; background: #1a1a1a; position: relative; overflow: hidden; }
+        .loader-fill {
+            width: 0%; height: 100%; background: linear-gradient(to right, #0057B7, #FFD700);
+            animation: loadProgress 4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        }
+        @keyframes loadProgress { 0% { width: 0%; } 100% { width: 100%; } }
+
+        /* --- ВЕРХНЯ ПАНЕЛЬ --- */
+        #top-info {
+            position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+            z-index: 1000; display: none; align-items: center;
+            background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(8px);
+            padding: 8px 25px; border-radius: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+        .loaded #top-info { display: flex; }
+
+        .online-status {
+            display: flex; align-items: center; gap: 8px;
+            font-size: 13px; font-weight: 900; text-transform: uppercase; color: #4CAF50;
+        }
+        
+        .dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: #4CAF50; box-shadow: 0 0 10px #4CAF50;
+            animation: blinkStatus 1.5s infinite;
+        }
+        @keyframes blinkStatus { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+        /* --- КАРТА ТА ТАБЛИЦЯ --- */
+        #map { width: 100%; height: 100%; opacity: 0; transition: opacity 1.5s; background: #111; }
+        .dark-leaflet-map { filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%); }
+
+        .leaflet-popup-content-wrapper { background: rgba(15, 15, 15, 0.98); color: white; border: 1px solid #ff0000; border-radius: 4px; padding: 0; overflow: hidden; }
+        .leaflet-popup-content { margin: 0; width: 200px !important; }
+        .leaflet-popup-tip { background: #ff0000; }
+        
+        .info-table { width: 100%; border-collapse: collapse; }
+        .info-table td { padding: 12px; font-family: sans-serif; text-align: center; }
+        .info-header { background: #ff0000; color: white; font-weight: 900; text-transform: uppercase; font-size: 11px; letter-spacing: 1px; }
+        .info-status { color: #ffffff; font-weight: bold; font-size: 14px; padding: 15px 10px !important; }
+
+        .loaded #loader-screen { opacity: 0; visibility: hidden; }
+        .loaded #map { opacity: 1; }
+
+        /* --- НАЛАШТУВАННЯ --- */
+        #settings-btn {
+            position: fixed; top: 20px; right: 20px; width: 45px; height: 45px;
+            background: rgba(0, 0, 0, 0.7); border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 50%; z-index: 1000; cursor: pointer; display: none;
+            align-items: center; justify-content: center;
+        }
+        .loaded #settings-btn { display: flex; }
+        #settings-btn svg { width: 24px; height: 24px; fill: white; }
+
+        #settings-menu {
+            position: fixed; top: 75px; right: 20px; width: 220px;
+            background: rgba(0, 0, 0, 0.95); backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px;
+            z-index: 1000; padding: 15px; display: none;
+        }
+        .menu-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .menu-row:last-child { margin-bottom: 0; }
+        .menu-label { color: #eee; font-size: 13px; font-weight: bold; }
+
+        .switch { position: relative; width: 40px; height: 20px; display: inline-block; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider {
+            position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #333; transition: .4s; border-radius: 20px;
+        }
+        .slider:before {
+            position: absolute; content: ""; height: 14px; width: 14px;
+            left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%;
+        }
+        input:checked + .slider { background-color: #ff0000; }
+        input:checked + .slider:before { transform: translateX(20px); }
+    </style>
+</head>
+<body>
+
+    <div id="loader-screen">
+        <div class="logo-box">
+            <div class="radar-container">
+                <div class="target t1"></div><div class="target t2"></div>
+                <svg class="radar-svg" viewBox="0 0 100 100">
+                    <path d="M 50,10 A 40,40 0 1,1 20,25" fill="none" stroke="white" stroke-width="7" stroke-linecap="round"/>
+                    <circle cx="50" cy="50" r="18" fill="none" stroke="white" stroke-width="5" opacity="0.3"/>
+                    <circle cx="50" cy="50" r="7" fill="white"/>
+                </svg>
+            </div>
+            <div class="text-ua">Оперативно Єціль</div>
+            <div class="text-live">LIVE</div>
+        </div>
+        <div class="loader-wrapper"><div class="loader-bar"><div class="loader-fill"></div></div></div>
+    </div>
+
+    <div id="top-info">
+        <div class="online-status"><div class="dot"></div>Онлайн: <span id="online-count">1</span></div>
+    </div>
+
+    <div id="settings-btn">
+        <svg viewBox="0 0 24 24"><path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.97 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.97 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.68 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z" /></svg>
+    </div>
+
+    <div id="settings-menu">
+        <div class="menu-row">
+            <span class="menu-label">Темна карта</span>
+            <label class="switch"><input type="checkbox" id="theme-toggle" checked><span class="slider"></span></label>
+        </div>
+        <div class="menu-row">
+            <span class="menu-label">Бойові Зіткнення</span>
+            <label class="switch"><input type="checkbox" id="ds-toggle" checked><span class="slider"></span></label>
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        const firebaseConfig = { databaseURL: "https://map-objects-75fa0-default-rtdb.europe-west1.firebasedatabase.app/" };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        const onlineRef = db.ref("users_online");
+        db.ref(".info/connected").on("value", (s) => { if(s.val()){ onlineRef.transaction(c => (c||0)+1); onlineRef.onDisconnect().transaction(c => (c||0)-1); }});
+        onlineRef.on("value", (s) => { document.getElementById('online-count').innerText = s.val() || 1; });
+
+        const map = L.map('map', { zoomControl: false, attributionControl: false }).setView([48.37, 31.16], 6);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+        let dsLayer;
+
+        function loadData() {
+            fetch('deepstate.geojson').then(r => r.json()).then(data => {
+                dsLayer = L.geoJSON(data, {
+                    style: { stroke: false, fillColor: "#ff0000", fillOpacity: 0.35 },
+                    onEachFeature: (feature, layer) => {
+                        layer.on('click', (e) => {
+                            const popupContent = `
+                                <table class="info-table">
+                                    <tr><td class="info-header">DeepState LIVE</td></tr>
+                                    <tr><td class="info-status">Захоплено ворогом РФ</td></tr>
+                                </table>
+                            `;
+                            L.popup({ minWidth: 200 }).setLatLng(e.latlng).setContent(popupContent).openOn(map);
+                        });
+                    }
+                }).addTo(map);
+            });
+
+            fetch('mista.geojson').then(r => r.json()).then(data => {
+                L.geoJSON(data, { style: { color: "#ff0000", weight: 2, fillOpacity: 0, stroke: true } }).addTo(map);
+            });
+        }
+
+        loadData();
+
+        // Перемикач теми
+        document.getElementById('theme-toggle').onchange = (e) => {
+            document.getElementById('map').classList.toggle('dark-leaflet-map', e.target.checked);
+        };
+
+        // Перемикач DeepState
+        document.getElementById('ds-toggle').onchange = (e) => {
+            if (e.target.checked) dsLayer.addTo(map); else map.removeLayer(dsLayer);
+        };
+
+        const btn = document.getElementById('settings-btn');
+        const menu = document.getElementById('settings-menu');
+        btn.onclick = (e) => { e.stopPropagation(); menu.style.display = menu.style.display === 'block' ? 'none' : 'block'; };
+        document.addEventListener('click', () => menu.style.display = 'none');
+        menu.onclick = (e) => e.stopPropagation();
+
+        window.onload = () => { 
+            setTimeout(() => { 
+                document.body.classList.add('loaded'); 
+                document.getElementById('map').classList.add('dark-leaflet-map');
+                map.invalidateSize(); 
+            }, 4500); 
+        };
+    </script>
+</body>
+</html>
+
